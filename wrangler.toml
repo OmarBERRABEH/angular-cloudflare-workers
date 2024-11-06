@@ -1,0 +1,11 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "angular-19"
+compatibility_date = "2024-10-22"
+main = "./dist/angular-19/server/server.mjs"
+assets = { directory = "./dist/angular-19/browser", binding = "ASSETS" }
+
+# Workers Logs
+# Docs: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+# Configuration: https://developers.cloudflare.com/workers/observability/logs/workers-logs/#enable-workers-logs
+[observability]
+enabled = true

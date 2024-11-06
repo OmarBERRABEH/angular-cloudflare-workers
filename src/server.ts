@@ -1,72 +1,31 @@
-import {
-  AngularNodeAppEngine,
-  createNodeRequestHandler,
-  isMainModule,
-  writeResponseToNodeResponse,
-} from '@angular/ssr/node';
-import express from 'express';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { renderApplication } from "@angular/platform-server";
+import bootstrap from "./main.server";
 
-const serverDistFolder = dirname(fileURLToPath(import.meta.url));
-const browserDistFolder = resolve(serverDistFolder, '../browser');
-
-const app = express();
-const angularApp = new AngularNodeAppEngine();
-
-/**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/**', (req, res) => {
- *   // Handle API request
- * });
- * ```
- */
-
-/**
- * Serve static files from /browser
- */
-app.get(
-  '**',
-  express.static(browserDistFolder, {
-    maxAge: '1y',
-    index: 'index.html',
-    setHeaders: (res) => {
-      const headers = angularApp.getPrerenderHeaders(res.req);
-      for (const [key, value] of headers) {
-        res.setHeader(key, value);
-      }
-    },
-  }),
-);
-
-/**
- * Handle all other requests by rendering the Angular application.
- */
-app.get('**', (req, res, next) => {
-  angularApp
-    .render(req)
-    .then((response) =>
-      response ? writeResponseToNodeResponse(response, res) : next(),
-    )
-    .catch(next);
-});
-
-/**
- * Start the server if this module is the main entry point.
- * The server listens on the port defined by the `PORT` environment variable, or defaults to 4000.
- */
-if (isMainModule(import.meta.url)) {
-  const port = process.env['PORT'] || 4000;
-  app.listen(port, () => {
-    console.log(`Node Express server listening on http://localhost:${port}`);
-  });
+interface Env {
+	ASSETS: { fetch: typeof fetch };
 }
 
-/**
- * The request handler used by the Angular CLI (dev-server and during build).
- */
-export const reqHandler = createNodeRequestHandler(app);
+// We attach the Cloudflare `fetch()` handler to the global scope
+// so that we can export it when we process the Angular output.
+// See tools/bundle.mjs
+async function workerFetchHandler(request: Request, env: Env) {
+	const url = new URL(request.url);
+	console.log("render SSR", url.href);
+
+	// Get the root `index.html` content.
+	const indexUrl = new URL("/index.csr.html", url);
+	const indexResponse = await env.ASSETS.fetch(new Request(indexUrl));
+	const document = await indexResponse.text();
+
+	const content = await renderApplication(bootstrap, {
+		document,
+		url: url.pathname,
+	});
+
+	// console.log("rendered SSR", content);
+	return new Response(content, indexResponse);
+}
+
+export default {
+	fetch: (request: Request, env: Env) =>workerFetchHandler(request, env)
+};
